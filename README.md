@@ -1,2 +1,3 @@
 # BSTA-374
-My first attempt in BSTA Course
+I am Anik
+My first attempt in BSTA Course to get github
