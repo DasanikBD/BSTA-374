@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BSTA 374 — Anik Das</title>
+<style>
+  :root {
+    --ink: #2b2118;
+    --muted: #6b5d50;
+    --paper: #ffffff;
+    --brown: #653600;
+    --rule: #e4ddd5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 17px/1.6 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  header {
+    padding: 3.5rem 1.5rem 2.5rem;
+    border-bottom: 1px solid var(--rule);
+    background-image: radial-gradient(circle, rgba(101, 54, 0, 0.18) 1.4px, transparent 1.6px);
+    background-size: 22px 22px;
+  }
+  .wrap { max-width: 44rem; margin: 0 auto; }
+  h1 {
+    margin: 0;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(2.2rem, 6vw, 3.2rem);
+    line-height: 1.1;
+    color: var(--brown);
+  }
+  .who { margin: 0.6rem 0 0; color: var(--muted); }
+  main { padding: 2rem 1.5rem 4rem; }
+  h2 { font-size: 1.1rem; margin: 0 0 1rem; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  li { border-top: 1px solid var(--rule); }
+  li:last-child { border-bottom: 1px solid var(--rule); }
+  a {
+    display: block;
+    padding: 1rem 0.25rem;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  a:hover .title, a:focus-visible .title { color: var(--brown); text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--brown); outline-offset: 2px; }
+  .title { font-weight: 600; }
+  .desc { display: block; color: var(--muted); font-size: 0.95rem; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>BSTA 374</h1>
+      <p class="who">Anik Das, Lehigh University. Exercises for the semester, in R and Quarto.</p>
+    </div>
+  </header>
+  <main>
+    <div class="wrap">
+      <h2>Exercises</h2>
+      <ol>
+        <li>
+          <a href="Exercise3/DAS_A_Exercise3.html">
+            <span class="title">Exercise 3: Point patterns in space and space-time</span>
+            <span class="desc">Quadrats, nearest neighbours, Ripley's K, kernel density, and the space-time K function for simulated dengue cases.</span>
+          </a>
+        </li>
+      </ol>
+    </div>
+  </main>
+</body>
+</html>
