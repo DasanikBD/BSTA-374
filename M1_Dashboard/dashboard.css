@@ -1,0 +1,27 @@
+.navbar-inverse {
+  background-color: #17324d;
+  border-color: #17324d;
+}
+
+.leaflet-container {
+  background: #eef3f7;
+}
+
+.chart-title {
+  color: #17324d;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.section.level3 {
+  border-color: #d9e1e8;
+}
+
+blockquote {
+  border-left: 4px solid #0b7285;
+  color: #425466;
+  font-size: 12px;
+  margin: 8px 0;
+  padding: 6px 10px;
+}
+

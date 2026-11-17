@@ -1,0 +1,207 @@
+---
+title: "Pennsylvania Diabetes Mortality, 2018-2025"
+subtitle: "BSTA 374 - Milestone M1 Static Dashboard"
+author: "Anik Das"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: cosmo
+    css: dashboard.css
+    self_contained: true
+    source_code: embed
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.retina = 2
+)
+
+library(flexdashboard)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(leaflet)
+library(DT)
+library(sf)
+library(scales)
+
+data_path <- "data/processed/pa_diabetes_mortality_age_adjusted_2018_2025.csv"
+state_path <- "data/processed/pa_diabetes_state_trend_2018_2025.csv"
+shape_path <- "data/processed/pa_counties.rds"
+
+required_files <- c(data_path, state_path, shape_path)
+if (!all(file.exists(required_files))) {
+  stop("Required data are missing. Run source('scripts/fetch_data.R') first.")
+}
+
+dat <- read.csv(data_path, stringsAsFactors = FALSE)
+dat$county_fips <- sprintf("%05s", dat$county_fips)
+state_trend <- read.csv(state_path, stringsAsFactors = FALSE)
+
+pa_map <- readRDS(shape_path) |>
+  st_transform(4326)
+pa_map$county_fips <- as.character(pa_map$county_fips)
+
+# Map: one row per county for the most recent year.
+map_year <- max(dat$year)
+by_county <- dat |>
+  filter(.data$year == map_year) |>
+  select(
+    .data$county_fips, .data$county_name, .data$deaths,
+    .data$expected_annual_age, .data$age_adjusted_smr,
+    .data$age_adjusted_smr_low, .data$age_adjusted_smr_high
+  )
+
+my_map <- pa_map |>
+  left_join(by_county, by = c("county_fips", "county_name"))
+
+join_missing <- sum(is.na(my_map$age_adjusted_smr))
+stopifnot(join_missing == 0L, nrow(by_county) == 67L)
+
+# Time series: Pennsylvania and one county with sufficiently large counts.
+focus <- "Allegheny"
+by_year <- bind_rows(
+  state_trend |>
+    transmute(
+      year = .data$year,
+      SMR = .data$fixed_reference_smr,
+      area = "Pennsylvania"
+    ),
+  dat |>
+    filter(.data$county_name == focus) |>
+    transmute(
+      year = .data$year,
+      SMR = .data$fixed_reference_smr,
+      area = paste0(focus, " County")
+    )
+)
+```
+
+Column {data-width=600}
+-----------------------------------------------------------------------
+
+### Age-adjusted diabetes mortality ratio by Pennsylvania county, 2025
+
+```{r map}
+breaks <- c(0, 0.50, 2 / 3, 0.90, 1 / 0.90, 1.50, 2, Inf)
+pal <- colorBin(
+  rev(RColorBrewer::brewer.pal(7, "RdBu")),
+  domain = my_map$age_adjusted_smr,
+  bins = breaks,
+  na.color = "#d9d9d9"
+)
+
+map_labels <- sprintf(
+  paste0(
+    "<strong>%s County</strong><br/>",
+    "Age-adjusted SMR: %.2f<br/>",
+    "Observed deaths: %s<br/>",
+    "Age-adjusted expected deaths: %.1f<br/>",
+    "Exact 95%% CI: %.2f-%.2f"
+  ),
+  my_map$county_name,
+  my_map$age_adjusted_smr,
+  comma(my_map$deaths),
+  my_map$expected_annual_age,
+  my_map$age_adjusted_smr_low,
+  my_map$age_adjusted_smr_high
+) |>
+  lapply(htmltools::HTML)
+
+leaflet(
+  my_map,
+  options = leafletOptions(
+    minZoom = 6,
+    maxZoom = 9,
+    attributionControl = FALSE
+  )
+) |>
+  addPolygons(
+    fillColor = ~pal(age_adjusted_smr),
+    fillOpacity = 0.86,
+    color = "white",
+    weight = 1,
+    label = map_labels,
+    highlightOptions = highlightOptions(
+      weight = 3,
+      color = "#17324d",
+      bringToFront = TRUE
+    )
+  ) |>
+  addLegend(
+    "bottomright",
+    pal = pal,
+    values = ~age_adjusted_smr,
+    title = "Age-adjusted SMR",
+    labFormat = labelFormat(digits = 2),
+    opacity = 0.9
+  ) |>
+  fitBounds(-80.6, 39.6, -74.5, 42.6)
+```
+
+> SMR = observed / age-adjusted expected deaths. Red counties have more deaths than expected; blue counties have fewer. The Pennsylvania annual reference is 1.
+
+Column {data-width=400}
+-----------------------------------------------------------------------
+
+### Fixed-reference SMR by year: Pennsylvania and Allegheny County
+
+```{r time-series}
+cols <- setNames(
+  c("#111111", "#b2182b"),
+  c("Pennsylvania", paste0(focus, " County"))
+)
+
+p <- ggplot(
+  by_year,
+  aes(
+    x = .data$year,
+    y = .data$SMR,
+    colour = .data$area,
+    group = .data$area,
+    text = sprintf(
+      "%s<br/>Year: %s<br/>Fixed-reference SMR: %.2f",
+      .data$area,
+      .data$year,
+      .data$SMR
+    )
+  )
+) +
+  geom_hline(yintercept = 1, linetype = 2, colour = "grey50") +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2) +
+  scale_colour_manual(values = cols) +
+  scale_x_continuous(breaks = 2018:2025) +
+  labs(
+    x = NULL,
+    y = "Fixed-reference SMR",
+    colour = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "top"
+  )
+
+ggplotly(p, tooltip = "text")
+```
+
+> Pennsylvania mortality peaked in 2020 and then declined below the 2018-2019 reference by 2023. Allegheny County followed a similar pattern and remained below the statewide reference in 2025.
+
+### About these data
+
+- **Outcome:** underlying-cause diabetes deaths, 2018-2025, by year.
+- **Population at risk:** residents of all 67 Pennsylvania counties.
+- **Expected counts:** indirect standardization using five age groups (0-44, 45-64, 65-74, 75-84, and 85+).
+- **Map measure:** annual age-adjusted SMR for 2025; the Pennsylvania annual reference equals 1.
+- **Time-series measure:** SMR against fixed pooled Pennsylvania 2018-2019 age-specific rates.
+- **Sources:** [PA Department of Health death statistics, 2018-2024](https://www.pa.gov/agencies/health/health-statistics/birth-death-and-other-vital-statistics/death-statistics); [PA 2025 county-age-cause archive](https://www.pa.gov/content/dam/copapwp-pagov/en/health/documents/topics/healthstatistics/vitalstatistics/deathstatistics/documents/2025/data-zipped/county-age-cause-2025.zip); [Census county-age populations](https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/counties/asrh/cc-est2025-agesex-42.csv); [Census county boundaries](https://www2.census.gov/geo/tiger/GENZ2022/shp/cb_2022_us_county_500k.zip).
+- **Areas without data:** none; the polygon-data join check returned `r join_missing` missing counties.
+- **Limitation:** mortality measures fatal disease burden, not everyone living with diabetes; five broad age groups may leave residual age differences.
+
+> The repository includes `data/processed/data_sources.csv`, which identifies the observed-death, population, and boundary files. These are aggregated county-year counts, not individual records.
+
