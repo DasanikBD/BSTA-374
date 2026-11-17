@@ -4,15 +4,15 @@ This folder contains the static M1 flexdashboard for underlying-cause diabetes m
 
 The assignment source is `dashboard.Rmd`, which knits to the self-contained submission file `DAS_A_M1.html`.
 
-## Build M1
+## Render the dashboard
 
-Open this folder as the RStudio working directory, restart R, and run:
+Open this folder in RStudio and run:
 
 ```r
 source("scripts/render_m1.R")
 ```
 
-Alternatively, open `dashboard.Rmd` and click **Knit**. Upload `DAS_A_M1.html` to Course Site. Do not use `quarto render` for M1.
+Alternatively, open `dashboard.Rmd` and click **Knit**. The output file is `DAS_A_M1.html`.
 
 ## What M1 shows
 
@@ -78,7 +78,6 @@ M1_Dashboard/
 |-- dashboard.css                 # static M1 styling
 |-- DAS_A_M1.html                 # exact M1 upload file
 |-- README.md
-|-- AI_USE.md
 |-- DATA_REVISION_LOG.md
 |-- R/
 |   `-- data_helpers.R
