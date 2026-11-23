@@ -1,0 +1,391 @@
+---
+title: "Pennsylvania Diabetes Mortality, 2018-2025"
+subtitle: "BSTA 374 - Milestone M2 Reactive Dashboard"
+author: "Anik Das"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: scroll
+    theme: cosmo
+    css: dashboard_app.css
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(leaflet)
+library(scales)
+
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# Data: one row per Pennsylvania county and year.
+dat <- read.csv(
+  "data/processed/pa_diabetes_mortality_age_adjusted_2018_2025.csv",
+  stringsAsFactors = FALSE
+)
+dat$county_fips <- sprintf("%05s", dat$county_fips)
+dat$year <- as.integer(dat$year)
+
+# Pennsylvania annual trend against a fixed 2018-2019 reference.
+state_trend <- read.csv(
+  "data/processed/pa_diabetes_state_trend_2018_2025.csv",
+  stringsAsFactors = FALSE
+)
+
+# Age-specific deaths and populations for the age-pattern panel.
+age_deaths <- read.csv(
+  "data/intermediate/pa_diabetes_deaths_by_age_2018_2025.csv",
+  stringsAsFactors = FALSE
+)
+age_population <- read.csv(
+  "data/intermediate/pa_county_population_by_age_2018_2025.csv",
+  stringsAsFactors = FALSE
+)
+age_data <- left_join(
+  age_deaths,
+  age_population,
+  by = c("year", "county_fips", "county_name", "age_group")
+)
+age_levels <- c("0-44", "45-64", "65-74", "75-84", "85+")
+age_data$age_group <- factor(age_data$age_group, levels = age_levels)
+
+# County boundaries are read once, outside the reactive expressions.
+pa_map <- readRDS("data/processed/pa_counties.rds") |>
+  st_transform(4326)
+pa_map$county_fips <- as.character(pa_map$county_fips)
+
+county_names <- sort(unique(dat$county_name))
+
+# Statewide trend reads no input and is computed once.
+pa_year <- state_trend |>
+  transmute(
+    year = year,
+    SMR = fixed_reference_smr,
+    area = "Pennsylvania"
+  )
+
+# Fixed Exercise 4 risk classes: colours keep the same meaning.
+risk_breaks <- c(0, 0.5, 2 / 3, 0.9, 1 / 0.9, 1.5, 2, Inf)
+```
+
+Dashboard
+=====================================
+
+Column {.sidebar data-width=240}
+-----------------------------------------------------------------------
+
+```{r inputs}
+selectInput(
+  "county",
+  "Pennsylvania county",
+  choices = county_names,
+  selected = "Allegheny"
+)
+
+sliderInput(
+  "years",
+  "Years",
+  min = min(dat$year),
+  max = max(dat$year),
+  value = range(dat$year),
+  step = 1,
+  sep = ""
+)
+```
+
+Pick a county, then drag either end of the year slider. The map, selected
+county outline, time-series band, and summary card respond.
+
+> **Coverage:** all 67 Pennsylvania counties, 2018-2025 (536 county-year
+> records). Every county-year has an observed diabetes-death count.
+
+```{r reactive}
+# Observed and expected deaths by county for the selected years.
+by_county <- reactive({
+  dat |>
+    filter(between(year, input$years[1], input$years[2])) |>
+    group_by(county_fips, county_name) |>
+    summarise(
+      Observed = sum(deaths),
+      Expected = sum(expected_annual_age),
+      Person_years = sum(population),
+      .groups = "drop"
+    ) |>
+    mutate(
+      SMR = Observed / Expected,
+      Rate = 1e5 * Observed / Person_years
+    )
+})
+```
+
+> SMR = observed deaths divided by age-adjusted expected deaths. A value above
+> 1 means more deaths than expected under the Pennsylvania reference.
+
+> The observations are aggregated county-year counts, not individual records
+> or death locations.
+
+Column {data-width=520}
+-----------------------------------------------------------------------
+
+### Age-adjusted SMR by county, selected years
+
+```{r map}
+renderLeaflet({
+  d <- left_join(
+    pa_map,
+    by_county(),
+    by = c("county_fips", "county_name")
+  )
+
+  pal <- colorBin(
+    rev(RColorBrewer::brewer.pal(7, "RdBu")),
+    domain = d$SMR,
+    bins = risk_breaks
+  )
+
+  leaflet(d) |>
+    addPolygons(
+      fillColor = ~pal(SMR),
+      fillOpacity = 0.85,
+      color = "#7a8793",
+      weight = 0.8,
+      label = ~sprintf(
+        "%s County: SMR %.2f (%s observed, %.1f expected)",
+        county_name,
+        SMR,
+        format(Observed, big.mark = ","),
+        Expected
+      ),
+      highlightOptions = highlightOptions(
+        weight = 2,
+        color = "black",
+        bringToFront = TRUE
+      )
+    ) |>
+    addPolygons(
+      data = filter(d, county_name == input$county),
+      fill = FALSE,
+      color = "black",
+      weight = 4
+    ) |>
+    addLegend(
+      "bottomright",
+      pal = pal,
+      values = ~SMR,
+      title = paste0(
+        "Age-adjusted SMR<br>",
+        input$years[1], "-", input$years[2]
+      ),
+      labFormat = labelFormat(digits = 2),
+      opacity = 0.85
+    )
+})
+```
+
+> Red counties have more deaths than expected; blue counties have fewer. The
+> black outline marks the county selected in the sidebar. Map classes stay
+> fixed when the period changes.
+
+Column {data-width=480}
+-----------------------------------------------------------------------
+
+### Observed deaths {data-height=105}
+
+```{r observed-box}
+renderValueBox({
+  one <- filter(by_county(), county_name == input$county)
+
+  valueBox(
+    value = format(one$Observed, big.mark = ","),
+    caption = sprintf(
+      "%s County diabetes deaths, %s-%s",
+      input$county,
+      input$years[1],
+      input$years[2]
+    ),
+    icon = "fa-heartbeat",
+    color = "danger"
+  )
+})
+```
+
+### Age-adjusted SMR {data-height=105}
+
+```{r summary-box}
+renderValueBox({
+  one <- filter(by_county(), county_name == input$county)
+
+  valueBox(
+    value = sprintf("%.2f", one$SMR),
+    caption = sprintf(
+      "%s observed / %.1f expected; Pennsylvania reference = 1",
+      format(one$Observed, big.mark = ","),
+      one$Expected
+    ),
+    icon = "fa-balance-scale",
+    color = "primary"
+  )
+})
+```
+
+### Fixed-reference SMR by year {data-height=255}
+
+```{r timeseries}
+renderPlotly({
+  county_label <- paste0(input$county, " County")
+
+  one <- dat |>
+    filter(county_name == input$county) |>
+    transmute(
+      year = year,
+      SMR = fixed_reference_smr,
+      area = county_label
+    )
+
+  cols <- setNames(
+    c("black", "#B2182B"),
+    c("Pennsylvania", county_label)
+  )
+
+  p <- ggplot(
+    bind_rows(pa_year, one),
+    aes(year, SMR, colour = area, group = area)
+  ) +
+    annotate(
+      "rect",
+      xmin = input$years[1] - 0.5,
+      xmax = input$years[2] + 0.5,
+      ymin = -Inf,
+      ymax = Inf,
+      fill = "grey90"
+    ) +
+    geom_hline(yintercept = 1, linetype = 2, colour = "grey50") +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 1.5) +
+    scale_colour_manual(values = cols) +
+    scale_x_continuous(breaks = 2018:2025) +
+    labs(x = NULL, y = "Fixed-reference SMR", colour = NULL) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "top", panel.grid.minor = element_blank())
+
+  ggplotly(p)
+})
+```
+
+> The grey band marks the selected period. The dashed line at 1 represents as
+> many deaths as expected under the fixed 2018-2019 reference.
+
+### Age-pattern interpretation {data-height=115}
+
+> The bars compare the selected county with Pennsylvania for the selected
+> years. Mortality rises strongly with age, which is why age adjustment is
+> necessary for county comparisons.
+
+### Mortality by age group {data-height=500}
+
+```{r age-plot}
+renderPlotly({
+  selected_years <- age_data |>
+    filter(between(year, input$years[1], input$years[2]))
+
+  county_age <- selected_years |>
+    filter(county_name == input$county) |>
+    group_by(age_group) |>
+    summarise(
+      deaths = sum(deaths),
+      population = sum(population),
+      .groups = "drop"
+    ) |>
+    mutate(
+      rate = 1e5 * deaths / population,
+      area = paste0(input$county, " County")
+    )
+
+  pa_age <- selected_years |>
+    group_by(age_group) |>
+    summarise(
+      deaths = sum(deaths),
+      population = sum(population),
+      .groups = "drop"
+    ) |>
+    mutate(
+      rate = 1e5 * deaths / population,
+      area = "Pennsylvania"
+    )
+
+  age_plot_data <- bind_rows(pa_age, county_age)
+  age_colours <- setNames(
+    c("#17324d", "#b2182b"),
+    c("Pennsylvania", paste0(input$county, " County"))
+  )
+
+  p <- ggplot(
+    age_plot_data,
+    aes(
+      age_group,
+      rate,
+      fill = area,
+      text = sprintf(
+        "%s<br>Age: %s<br>Deaths: %s<br>Rate: %.1f per 100,000",
+        area,
+        age_group,
+        format(deaths, big.mark = ","),
+        rate
+      )
+    )
+  ) +
+    geom_col(position = "dodge") +
+    scale_fill_manual(values = age_colours) +
+    labs(
+      x = "Age group",
+      y = "Deaths per 100,000 person-years",
+      fill = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "top",
+      panel.grid.minor = element_blank(),
+      plot.margin = margin(t = 10, r = 10, b = 30, l = 10)
+    )
+
+  ggplotly(p, tooltip = "text") |>
+    layout(
+      margin = list(l = 80, r = 20, t = 25, b = 85),
+      xaxis = list(automargin = TRUE),
+      yaxis = list(automargin = TRUE)
+    )
+})
+```
+
+Methods and Sources
+=====================================
+
+Column {data-width=1000}
+-----------------------------------------------------------------------
+
+### About these data
+
+- **Outcome:** underlying-cause diabetes deaths, 2018-2025, by county and year.
+- **Population at risk:** residents of all 67 Pennsylvania counties.
+- **Expected deaths:** indirect standardization using five age groups (0-44,
+  45-64, 65-74, 75-84, and 85+).
+- **Map measure:** observed divided by annual age-adjusted expected deaths,
+  pooled across the selected period.
+- **Time-series measure:** annual SMR against fixed pooled Pennsylvania
+  2018-2019 age-specific rates.
+- **Interaction:** the reader chooses a county and period; the panels respond.
+- **Limitation:** mortality measures fatal burden rather than diabetes
+  prevalence; county patterns do not establish individual or causal effects.
+
+The complete official source list is stored in
+`data/processed/data_sources.csv`.
+
+> Pennsylvania Department of Health disclaimer: These data were provided by
+> the Pennsylvania Department of Health. The Department specifically
+> disclaims responsibility for any analyses, interpretations, or conclusions
+> made by the user of this data product.

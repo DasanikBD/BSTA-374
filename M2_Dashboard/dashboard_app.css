@@ -1,0 +1,38 @@
+.navbar-inverse {
+  background-color: #17324d;
+  border-color: #17324d;
+}
+
+.section.sidebar {
+  background-color: #f3f6f8;
+  border-right: 1px solid #d9e1e8;
+  color: #17324d;
+}
+
+.section.sidebar .form-group {
+  margin-bottom: 18px;
+}
+
+.leaflet-container {
+  background: #c6ccd2;
+}
+
+.level3 > .chart-title {
+  color: #17324d;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dashboard-page-wrapper {
+  background: #f8fafb;
+  padding-bottom: 56px;
+}
+
+.nav-tabs > li > a {
+  font-weight: 600;
+}
+
+.dataTables_wrapper {
+  font-size: 13px;
+  padding: 4px;
+}
